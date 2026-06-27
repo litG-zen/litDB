@@ -1,7 +1,7 @@
 package core
 
 import (
-	"fmt"
+	"github/litG-zen/litDB/conf"
 	"time"
 )
 
@@ -28,8 +28,10 @@ func NewObj(value interface{}, durationMs int64) *Obj {
 }
 
 func Put(k string, obj *Obj) {
+	if len(store) >= conf.KEYSLIMIT {
+		evict()
+	}
 	store[k] = obj
-	fmt.Println(k, obj.ExpiresAt)
 }
 
 func Get(k string) *Obj {
