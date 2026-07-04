@@ -1,7 +1,7 @@
 package core
 
 import (
-	"errors"
+	"bytes"
 	"github/litG-zen/litDB/conf"
 	"github/litG-zen/litDB/parser"
 	"io"
@@ -11,23 +11,23 @@ import (
 
 var NIL_RESPONSE []byte = []byte("$-1\r\n")
 
-func evalPING(c io.ReadWriter, args []string) error {
+func evalPING(args []string) []byte {
 	var b []byte
 	if len(args) > 1 {
-		return errors.New("Err wrong number of arguments for 'PING' command")
+		return parser.Encode("Err wrong number of arguments for 'PING' command", false)
 	}
 	if len(args) == 0 {
 		b = parser.Encode("PONG", true)
 	} else {
 		b = parser.Encode(args[0], false)
 	}
-	_, err := c.Write(b)
-	return err
+	return b
 }
 
-func evalSET(c io.ReadWriter, args []string) error {
+func evalSET(args []string) []byte {
+	var b []byte
 	if len(args) <= 1 {
-		return errors.New("(error) ERR wrong number of arguments for 'set' command")
+		return parser.Encode("(error) ERR wrong number of arguments for 'set' command", false)
 	}
 
 	var key, value string
@@ -39,73 +39,76 @@ func evalSET(c io.ReadWriter, args []string) error {
 		switch args[i] {
 		case "EX", "ex":
 			if i+1 >= len(args) {
-				return errors.New("(error) syntax error")
+				return parser.Encode("(error) syntax error", false)
 			}
 			exDurationSec, err := strconv.ParseInt(args[i+1], 10, 64)
 			if err != nil {
-				return errors.New("(error) ERR value is not an integer or out of range")
+				return parser.Encode("(error) ERR value is not an integer or out of range", false)
 			}
 			i++
 			exDurationMs = exDurationSec * 1000
 		default:
-			return errors.New("(error) syntax error")
+			return parser.Encode("(error) syntax error", false)
 		}
 	}
 
 	Put(key, NewObj(value, exDurationMs))
-	c.Write([]byte("+OK\r\n"))
-	return nil
+	b = []byte("+OK\r\n")
+	return b
 }
 
-func evalGET(c io.ReadWriter, args []string) error {
+func evalGET(args []string) []byte {
+	var b []byte
+
 	if len(args) != 1 {
-		return errors.New("(error) ERR wrong number of arguments for 'get' command")
+		return parser.Encode("(error) ERR wrong number of arguments for 'get' command", false)
 	}
 	var key string = args[0]
 
 	obj := Get(key)
 
 	if obj == nil {
-		c.Write(NIL_RESPONSE)
-		return nil
+		b = NIL_RESPONSE
+		return b
 	}
 	if obj.ExpiresAt != -1 && obj.ExpiresAt <= time.Now().UnixMilli() {
-		c.Write(NIL_RESPONSE)
-		return nil
+		b = NIL_RESPONSE
+		return b
 	}
 
-	c.Write(parser.Encode(obj.Value, false))
-	return nil
+	b = parser.Encode(obj.Value, false)
+	return b
 }
 
-func evalTTL(c io.ReadWriter, args []string) error {
+func evalTTL(args []string) []byte {
+	var b []byte
 	if len(args) != 1 {
-		return errors.New("error) ERR wrong number of arguments for 'ttl' command")
+		return parser.Encode("error) ERR wrong number of arguments for 'ttl' command", false)
 	}
 
 	var key string = args[0]
 	obj := store[key]
 	if obj == nil {
-		c.Write([]byte(":-2\r\n"))
-		return nil
+		b = []byte(":-2\r\n")
+		return b
 	}
 
 	if obj.ExpiresAt == -1 {
-		c.Write([]byte(":-1\r\n"))
-		return nil
+		b = []byte(":-1\r\n")
+		return b
 	}
 
 	durationMs := obj.ExpiresAt - time.Now().UnixMilli()
 	if durationMs < 0 {
-		c.Write([]byte(":-2\r\n"))
-		return nil
+		b = []byte(":-2\r\n")
+		return b
 	}
-	c.Write(parser.Encode(int64(durationMs/1000), false))
-	return nil
+	b = parser.Encode(int64(durationMs/1000), false)
+	return b
 
 }
 
-func evalDEL(c io.ReadWriter, args []string) error {
+func evalDEL(args []string) []byte {
 	var deletedKeys int = 0
 
 	for _, key := range args {
@@ -114,46 +117,50 @@ func evalDEL(c io.ReadWriter, args []string) error {
 		}
 	}
 
-	c.Write(parser.Encode(deletedKeys, false))
-	return nil
+	return parser.Encode(deletedKeys, false)
 }
 
-func evalExpire(c io.ReadWriter, args []string) error {
+func evalExpire(args []string) []byte {
 	if len(args) <= 1 {
-		return errors.New("(error) ERR wrong number of arguments for 'expire' command")
+		return parser.Encode("(error) ERR wrong number of arguments for 'expire' command", false)
 	}
 
 	var key string = args[0]
 	expireDuration, err := strconv.ParseInt(args[1], 10, 64)
 	if err != nil {
-		return errors.New("(error) ERR value is not an integer or out of range")
+		return parser.Encode("(error) ERR value is not an integer or out of range", false)
 	}
 
 	obj := Get(key)
 	if obj == nil {
-		c.Write([]byte(":0\r\n"))
+		return parser.Encode(":0\r\n", false)
 	}
 
 	obj.ExpiresAt = time.Now().UnixMilli() + expireDuration*1000
-	c.Write([]byte(":1\r\n"))
-	return nil
+	return parser.Encode(":1\r\n", false)
 }
 
-func EvalAndRespond(c io.ReadWriter, cmd *conf.RedisCmd) error {
-	switch cmd.Cmd {
-	case "PING":
-		return evalPING(c, cmd.Args)
-	case "GET":
-		return evalGET(c, cmd.Args)
-	case "SET":
-		return evalSET(c, cmd.Args)
-	case "TTL":
-		return evalTTL(c, cmd.Args)
-	case "DEL":
-		return evalDEL(c, cmd.Args)
-	case "EXPIRE":
-		return evalExpire(c, cmd.Args)
-	default:
-		return evalPING(c, cmd.Args)
+func EvalAndRespond(c io.ReadWriter, cmds conf.RedisCmds) error {
+	var response []byte
+	buf := bytes.NewBuffer(response)
+	for _, cmd := range cmds {
+		switch cmd.Cmd {
+		case "PING":
+			buf.Write(evalPING(cmd.Args))
+		case "GET":
+			buf.Write(evalGET(cmd.Args))
+		case "SET":
+			buf.Write(evalSET(cmd.Args))
+		case "TTL":
+			buf.Write(evalTTL(cmd.Args))
+		case "DEL":
+			buf.Write(evalDEL(cmd.Args))
+		case "EXPIRE":
+			buf.Write(evalExpire(cmd.Args))
+		default:
+			buf.Write(evalPING(cmd.Args))
+		}
 	}
+	c.Write(buf.Bytes())
+	return nil
 }

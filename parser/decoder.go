@@ -3,25 +3,34 @@ package parser
 // RESP specification: https://redis.io/docs/reference/protocol-spec/
 
 func DecodeArrayString(data []byte) ([]string, error) {
-	value, err := Decode(data)
+	values, err := Decode(data)
 	if err != nil {
 		return nil, err
 	}
-	ts := value.([]interface{}) //type assertion to []interface{}
-	tokens := make([]string, len(ts))
-	for i := range ts {
-		tokens[i] = ts[i].(string)
+	tokens := make([]string, len(values))
+	for i := range values {
+		tokens[i] = values[i].(string)
 	}
 	return tokens, nil
 }
 
-func Decode(data []byte) (interface{}, error) {
+func Decode(data []byte) ([]interface{}, error) {
 	if len(data) == 0 {
 		return nil, nil
 	}
 
-	value, _, err := decodeOne(data)
-	return value, err
+	var values []interface{} = make([]interface{}, 0)
+	var index int = 0
+	for index < len(data) {
+		value, delta, err := decodeOne(data[index:])
+		if err != nil {
+			return nil, err
+		}
+		values = append(values, value)
+		index += delta
+	}
+
+	return values, nil
 }
 
 func decodeOne(data []byte) (interface{}, int, error) {

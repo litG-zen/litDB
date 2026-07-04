@@ -21,14 +21,12 @@ func RunSyncServer() error {
 			return err
 		}
 		for {
-			command, err := ReadCommand(conn, conn.RemoteAddr().String())
+			command, err := ReadCommands(conn, conn.RemoteAddr().String())
 			if err != nil {
-				fmt.Printf("line 25 err: %v", err)
 				return err
 			}
 			err = Reply(conn, command)
 			if err != nil {
-				fmt.Printf("line 29 err: %v", err)
 				return err
 			}
 		}
