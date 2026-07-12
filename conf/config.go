@@ -12,3 +12,5 @@ type RedisCmd struct {
 }
 
 type RedisCmds []*RedisCmd
+
+const AOF_FILE = "./litdb.aof"
