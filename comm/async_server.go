@@ -123,14 +123,14 @@ func RunAsyncServer() error {
 					}
 				} else {
 					comm := *connected_clients[int(event.Fd)]
-					cmd, err := ReadCommand(&comm, comm.ClientAddr)
+					cmds, err := ReadCommands(&comm, comm.ClientAddr)
 					if err != nil {
 						fmt.Printf("%s client disconnected. Total clients left: %d\n", comm.ClientAddr, len(connected_clients)-1)
 						syscall.Close(int(event.Fd))
 						delete(connected_clients, int(event.Fd))
 						continue
 					}
-					Reply(&comm, cmd)
+					Reply(&comm, cmds)
 				}
 
 			}
