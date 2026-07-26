@@ -28,3 +28,4 @@ litDB is a high-performance, asynchronous in-memory database that implements a s
 | `DEL` | Delete a key |
 | `EXPIRE` | Set expiration for a key |
 | `TTL` | Get remaining lifetime of a key |
+| `INCR` | Increment the value of a key |
