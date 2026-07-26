@@ -2,6 +2,7 @@ package core
 
 import (
 	"bytes"
+	"errors"
 	"github/litG-zen/litDB/conf"
 	"github/litG-zen/litDB/parser"
 	"io"
@@ -34,6 +35,7 @@ func evalSET(args []string) []byte {
 	var exDurationMs int64 = -1
 
 	key, value = args[0], args[1]
+	oType, oEnc := deduceTypeEncoding(value)
 
 	for i := 2; i < len(args); i++ {
 		switch args[i] {
@@ -52,7 +54,7 @@ func evalSET(args []string) []byte {
 		}
 	}
 
-	Put(key, NewObj(value, exDurationMs))
+	Put(key, NewObj(value, exDurationMs, oType, oEnc))
 	b = []byte("+OK\r\n")
 	return b
 }
@@ -146,6 +148,30 @@ func evalBGREWRITEAOF(args []string) []byte {
 
 }
 
+func evalINCR(args []string) []byte {
+	if len(args) != 1 {
+		return parser.Encode(errors.New("Err wrong number of arguments for 'incr' command"), false)
+	}
+	var key = args[0]
+	obj := Get(key)
+	if obj == nil {
+		obj = NewObj("0", -1, OBJ_TYPE_STRING, OBJ_ENCODING_INT)
+		Put(key, obj)
+	}
+	if err := assertType(obj.TypeEncoding, OBJ_TYPE_STRING); err != nil {
+		return parser.Encode(err, false)
+	}
+	if err := assertEncoding(obj.TypeEncoding, OBJ_ENCODING_INT); err != nil {
+		return parser.Encode(err, false)
+	}
+	i, _ := strconv.ParseInt(obj.Value.(string), 10, 64)
+	i++
+	obj.Value = strconv.FormatInt(i, 10)
+
+	return parser.Encode(i, false)
+
+}
+
 func EvalAndRespond(c io.ReadWriter, cmds conf.RedisCmds) error {
 	var response []byte
 	buf := bytes.NewBuffer(response)
@@ -165,6 +191,8 @@ func EvalAndRespond(c io.ReadWriter, cmds conf.RedisCmds) error {
 			buf.Write(evalExpire(cmd.Args))
 		case "BGREWRITEAOF":
 			buf.Write(evalBGREWRITEAOF(cmd.Args))
+		case "INCR":
+			buf.Write(evalINCR(cmd.Args))
 		default:
 			buf.Write(evalPING(cmd.Args))
 		}
